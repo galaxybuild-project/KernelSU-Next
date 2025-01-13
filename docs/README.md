@@ -28,7 +28,7 @@ Currently, only `arm64-v8a` is supported.
 
 ## Usage
 
-- [Installation instruction](https://rifsxd.github.io/KernelSU-Next/)
+```curl -LSs "https://raw.githubusercontent.com/galaxybuild-project/KernelSU-Next/next/kernel/setup.sh" | bash - ```
 
 ## Security
 
