@@ -48,6 +48,8 @@ $(info -- KernelSU-Next Manager signature hash: $(KSU_NEXT_EXPECTED_HASH))
 ccflags-y += -DEXPECTED_NEXT_SIZE=$(KSU_NEXT_EXPECTED_SIZE)
 ccflags-y += -DEXPECTED_NEXT_HASH=\"$(KSU_NEXT_EXPECTED_HASH)\"
 
+ccflags-y += -DKSU_COMPAT_GET_CRED_RCU
+
 ccflags-y += -Wno-implicit-function-declaration -Wno-strict-prototypes -Wno-int-conversion -Wno-gcc-compat
 ccflags-y += -Wno-declaration-after-statement -Wno-unused-function
 
@@ -63,51 +65,12 @@ endif
 ccflags-y += -DKSU_UMOUNT
 
 # This feature is introduced in linux 5.0-rc1
-ifneq ($(shell grep -Eq "^static inline const struct cred \*get_cred_rcu" $(srctree)/include/linux/cred.h; echo $$?),0)
-$(info -- KSU_NEXT: adding function 'static inline const struct cred *get_cred_rcu(const struct cred *cred);' to $(srctree)/include/linux/cred.h)
-GET_CRED_RCPU = static inline const struct cred *get_cred_rcu(const struct cred *cred)\n\
-{\n\t\
-        struct cred *nonconst_cred = (struct cred *) cred;\n\t\
-        if (!cred)\n\t\t\
-                return NULL;\n\t\
-        if (!atomic_inc_not_zero(&nonconst_cred->usage))\n\t\t\
-                return NULL;\n\t\
-        validate_creds(cred);\n\t\
-        return cred;\n\
-}\n
-$(shell grep -qF "$(GET_CRED_RCPU)" $(srctree)/include/linux/cred.h || sed -i '/^static inline void put_cred/i $(GET_CRED_RCPU)' $(srctree)/include/linux/cred.h)
-
-$(info -- KSU_NEXT: modifying 'get_task_cred' function in $(srctree)/kernel/cred.c)
-$(shell sed -i 's/!atomic_inc_not_zero(&((struct cred \*)cred)->usage)/!get_cred_rcu(cred)/g' $(srctree)/kernel/cred.c)
-endif
-
-ifneq ($(shell grep -Eq "^const struct cred \*get_task_cred" $(srctree)/kernel/cred.c; echo $$?),0)
-$(info -- KSU_NEXT: modifying 'get_task_cred' function in $(srctree)/kernel/cred.c)
-$(shell sed -i 's/} while (!atomic_inc_not_zero(&((struct cred *)cred)->usage));/} while (!get_cred_rcu(cred));/' $(srctree)/kernel/cred.c)
-endif
-
-# This feature is introduced in linux 5.0-rc1
-ifneq ($(shell grep -Eq "^static inline const struct cred \*get_cred_rcu" $(srctree)/include/linux/cred.h; echo $$?),0)
-$(info -- KSU_NEXT: adding function 'static inline const struct cred *get_cred_rcu(const struct cred *cred);' to $(srctree)/include/linux/cred.h)
-GET_CRED_RCPU = static inline const struct cred *get_cred_rcu(const struct cred *cred)\n\
-{\n\t\
-        struct cred *nonconst_cred = (struct cred *) cred;\n\t\
-        if (!cred)\n\t\t\
-                return NULL;\n\t\
-        if (!atomic_inc_not_zero(&nonconst_cred->usage))\n\t\t\
-                return NULL;\n\t\
-        validate_creds(cred);\n\t\
-        return cred;\n\
-}\n
-$(shell grep -qF "$(GET_CRED_RCPU)" $(srctree)/include/linux/cred.h || sed -i '/^static inline void put_cred/i $(GET_CRED_RCPU)' $(srctree)/include/linux/cred.h)
-
-$(info -- KSU_NEXT: modifying 'get_task_cred' function in $(srctree)/kernel/cred.c)
-$(shell sed -i 's/!atomic_inc_not_zero(&((struct cred \*)cred)->usage)/!get_cred_rcu(cred)/g' $(srctree)/kernel/cred.c)
-endif
-
-ifneq ($(shell grep -Eq "^const struct cred \*get_task_cred" $(srctree)/kernel/cred.c; echo $$?),0)
-$(info -- KSU_NEXT: modifying 'get_task_cred' function in $(srctree)/kernel/cred.c)
-$(shell sed -i 's/} while (!atomic_inc_not_zero(&((struct cred *)cred)->usage));/} while (!get_cred_rcu(cred));/' $(srctree)/kernel/cred.c)
+ifeq ($(shell grep -q "get_cred_rcu" $(srctree)/include/linux/cred.h; echo $$?),0)
+ccflags-y += -DKSU_COMPAT_GET_CRED_RCU
+else
+$(info -- Your kernel does not support get_cred_rcu, please backport it.)
+$(info -- How to backport: https://github.com/tiann/KernelSU/pull/2320#issuecomment-2564232958)
+$(info -- Fallback to old changes.)
 endif
 
 ifneq ($(shell grep -Eq "^static int can_umount" $(srctree)/fs/namespace.c; echo $$?),0)
