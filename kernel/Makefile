@@ -86,6 +86,30 @@ $(info -- KSU_NEXT: modifying 'get_task_cred' function in $(srctree)/kernel/cred
 $(shell sed -i 's/} while (!atomic_inc_not_zero(&((struct cred *)cred)->usage));/} while (!get_cred_rcu(cred));/' $(srctree)/kernel/cred.c)
 endif
 
+# This feature is introduced in linux 5.0-rc1
+ifneq ($(shell grep -Eq "^static inline const struct cred \*get_cred_rcu" $(srctree)/include/linux/cred.h; echo $$?),0)
+$(info -- KSU_NEXT: adding function 'static inline const struct cred *get_cred_rcu(const struct cred *cred);' to $(srctree)/include/linux/cred.h)
+GET_CRED_RCPU = static inline const struct cred *get_cred_rcu(const struct cred *cred)\n\
+{\n\t\
+        struct cred *nonconst_cred = (struct cred *) cred;\n\t\
+        if (!cred)\n\t\t\
+                return NULL;\n\t\
+        if (!atomic_inc_not_zero(&nonconst_cred->usage))\n\t\t\
+                return NULL;\n\t\
+        validate_creds(cred);\n\t\
+        return cred;\n\
+}\n
+$(shell grep -qF "$(GET_CRED_RCPU)" $(srctree)/include/linux/cred.h || sed -i '/^static inline void put_cred/i $(GET_CRED_RCPU)' $(srctree)/include/linux/cred.h)
+
+$(info -- KSU_NEXT: modifying 'get_task_cred' function in $(srctree)/kernel/cred.c)
+$(shell sed -i 's/!atomic_inc_not_zero(&((struct cred \*)cred)->usage)/!get_cred_rcu(cred)/g' $(srctree)/kernel/cred.c)
+endif
+
+ifneq ($(shell grep -Eq "^const struct cred \*get_task_cred" $(srctree)/kernel/cred.c; echo $$?),0)
+$(info -- KSU_NEXT: modifying 'get_task_cred' function in $(srctree)/kernel/cred.c)
+$(shell sed -i 's/} while (!atomic_inc_not_zero(&((struct cred *)cred)->usage));/} while (!get_cred_rcu(cred));/' $(srctree)/kernel/cred.c)
+endif
+
 ifneq ($(shell grep -Eq "^static int can_umount" $(srctree)/fs/namespace.c; echo $$?),0)
 $(info -- KSU_NEXT: adding function 'static int can_umount(const struct path *path, int flags);' to $(srctree)/fs/namespace.c)
 CAN_UMOUNT = static int can_umount(const struct path *path, int flags)\n\
